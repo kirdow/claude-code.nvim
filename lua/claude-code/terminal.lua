@@ -105,7 +105,7 @@ local function create_float(config, existing_bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
       bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
     else
-      local buftype = vim.api.nvim_get_option_value('buftype', {buf = bufnr})
+      local buftype = vim.api.nvim_get_option_value('buftype', { buf = bufnr })
       if buftype ~= 'terminal' then
         -- Buffer exists but is no longer a terminal, create a new one
         bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
@@ -115,6 +115,61 @@ local function create_float(config, existing_bufnr)
 
   -- Create and return the floating window
   return vim.api.nvim_open_win(bufnr, true, win_config)
+end
+
+--- Validate command and fallback to default if local script is invalid
+--- @param cmd string Command to validate
+--- @param check_dir string|nil Directory to check relative paths against (defaults to cwd)
+--- @return string Validated command or default 'claude' command
+--- @private
+local function validate_command(cmd, check_dir)
+  -- Check if command appears to be a local script (contains path separators)
+  -- This covers ./script, ../script, /path/to/script, or relative paths
+  if cmd:match('[/\\]') then
+    -- Resolve the full path for checking
+    local check_path = cmd
+    if check_dir and not cmd:match('^[/\\]') then
+      -- Relative path and we have a check directory
+      check_path = check_dir .. '/' .. cmd
+    end
+
+    -- It's a path reference, validate it exists and is executable
+    local uv = vim.loop
+    local stat = uv.fs_stat(check_path)
+
+    if not stat then
+      -- File doesn't exist, fall back to default
+      vim.notify(
+        string.format("Command '%s' not found, falling back to 'claude'", cmd),
+        vim.log.levels.WARN
+      )
+      return 'claude'
+    end
+
+    -- Check if file has execute permissions
+    -- In Unix file modes, execute bits are at positions 0, 3, and 6 (octal 0111)
+    -- We check if any execute bit is set by testing each position
+    local is_executable = false
+    if stat.mode then
+      -- Check user execute (bit 6), group execute (bit 3), or other execute (bit 0)
+      local mode = stat.mode
+      is_executable = (math.floor(mode / 64) % 2 == 1) -- user execute
+        or (math.floor(mode / 8) % 2 == 1) -- group execute
+        or (mode % 2 == 1) -- other execute
+    end
+
+    if not is_executable then
+      -- File exists but is not executable
+      vim.notify(
+        string.format("Command '%s' is not executable, falling back to 'claude'", cmd),
+        vim.log.levels.WARN
+      )
+      return 'claude'
+    end
+  end
+
+  -- Command is either a system command or a valid local script
+  return cmd
 end
 
 --- Build command with git root directory if configured
@@ -154,12 +209,12 @@ end
 --- @private
 local function configure_window_options(win_id, config)
   if config.window.hide_numbers then
-    vim.api.nvim_set_option_value('number', false, {win = win_id})
-    vim.api.nvim_set_option_value('relativenumber', false, {win = win_id})
+    vim.api.nvim_set_option_value('number', false, { win = win_id })
+    vim.api.nvim_set_option_value('relativenumber', false, { win = win_id })
   end
 
   if config.window.hide_signcolumn then
-    vim.api.nvim_set_option_value('signcolumn', 'no', {win = win_id})
+    vim.api.nvim_set_option_value('signcolumn', 'no', { win = win_id })
   end
 end
 
@@ -273,9 +328,9 @@ local function is_valid_terminal_buffer(bufnr)
 
   local buftype = nil
   pcall(function()
-    buftype = vim.api.nvim_get_option_value('buftype', {buf = bufnr})
+    buftype = vim.api.nvim_get_option_value('buftype', { buf = bufnr })
   end)
-  
+
   local terminal_job_id = nil
   pcall(function()
     terminal_job_id = vim.b[bufnr].terminal_job_id
@@ -323,7 +378,7 @@ local function create_new_instance(claude_code, config, git, instance_id)
   if config.window.position == 'float' then
     -- For floating window, create buffer first with terminal
     local new_bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
-    vim.api.nvim_set_option_value('bufhidden', 'hide', {buf = new_bufnr})
+    vim.api.nvim_set_option_value('bufhidden', 'hide', { buf = new_bufnr })
 
     -- Create the floating window
     local win_id = create_float(config, new_bufnr)
@@ -332,7 +387,10 @@ local function create_new_instance(claude_code, config, git, instance_id)
     vim.api.nvim_win_set_buf(win_id, new_bufnr)
 
     -- Determine command
-    local cmd = build_command_with_git_root(config, git, config.command)
+    -- Validate relative to git root if configured, otherwise relative to cwd
+    local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
+    local validated_cmd = validate_command(config.command, check_dir)
+    local cmd = build_command_with_git_root(config, git, validated_cmd)
 
     -- Run terminal in the buffer
     vim.fn.termopen(cmd)
@@ -356,7 +414,10 @@ local function create_new_instance(claude_code, config, git, instance_id)
     create_split(config.window.position, config)
 
     -- Determine if we should use the git root directory
-    local base_cmd = build_command_with_git_root(config, git, config.command)
+    -- Validate relative to git root if configured, otherwise relative to cwd
+    local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
+    local validated_cmd = validate_command(config.command, check_dir)
+    local base_cmd = build_command_with_git_root(config, git, validated_cmd)
     local cmd = 'terminal ' .. base_cmd
 
     vim.cmd(cmd)
