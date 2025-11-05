@@ -57,8 +57,9 @@ end
 
 --- Toggle the Claude Code terminal window
 --- This is a public function used by commands
-function M.toggle()
-  terminal.toggle(M, M.config, git)
+--- @param extra_args? string Extra arguments to pass to the claude command
+function M.toggle(extra_args)
+  terminal.toggle(M, M.config, git, extra_args)
 
   -- Set up terminal navigation keymaps after toggling
   local bufnr = get_current_buffer_number()

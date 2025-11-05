@@ -13,9 +13,9 @@ M.commands = {}
 --- @param claude_code table The main plugin module
 function M.register_commands(claude_code)
   -- Create the user command for toggling Claude Code
-  vim.api.nvim_create_user_command('ClaudeCode', function()
-    claude_code.toggle()
-  end, { desc = 'Toggle Claude Code terminal' })
+  vim.api.nvim_create_user_command('ClaudeCode', function(opts)
+    claude_code.toggle(opts.args)
+  end, { desc = 'Toggle Claude Code terminal', nargs = '*' })
 
   -- Create commands for each command variant
   for variant_name, variant_args in pairs(claude_code.config.command_variants) do

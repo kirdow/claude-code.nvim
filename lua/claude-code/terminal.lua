@@ -373,8 +373,9 @@ end
 --- @param config table Plugin configuration
 --- @param git table Git module
 --- @param instance_id string Instance identifier
+--- @param extra_args? string Extra arguments to pass to the claude command
 --- @private
-local function create_new_instance(claude_code, config, git, instance_id)
+local function create_new_instance(claude_code, config, git, instance_id, extra_args)
   if config.window.position == 'float' then
     -- For floating window, create buffer first with terminal
     local new_bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
@@ -391,6 +392,11 @@ local function create_new_instance(claude_code, config, git, instance_id)
     local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
     local validated_cmd = validate_command(config.command, check_dir)
     local cmd = build_command_with_git_root(config, git, validated_cmd)
+
+    -- Append extra args if provided
+    if extra_args and extra_args ~= '' then
+      cmd = cmd .. ' ' .. extra_args
+    end
 
     -- Run terminal in the buffer
     vim.fn.termopen(cmd)
@@ -418,6 +424,12 @@ local function create_new_instance(claude_code, config, git, instance_id)
     local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
     local validated_cmd = validate_command(config.command, check_dir)
     local base_cmd = build_command_with_git_root(config, git, validated_cmd)
+
+    -- Append extra args if provided
+    if extra_args and extra_args ~= '' then
+      base_cmd = base_cmd .. ' ' .. extra_args
+    end
+
     local cmd = 'terminal ' .. base_cmd
 
     vim.cmd(cmd)
@@ -445,7 +457,8 @@ end
 --- @param claude_code table The main plugin module
 --- @param config table The plugin configuration
 --- @param git table The git module
-function M.toggle(claude_code, config, git)
+--- @param extra_args? string Extra arguments to pass to the claude command
+function M.toggle(claude_code, config, git, extra_args)
   -- Determine instance ID based on config
   local instance_id = get_instance_id(config, git)
   claude_code.claude_code.current_instance = instance_id
@@ -460,6 +473,19 @@ function M.toggle(claude_code, config, git)
     bufnr = nil
   end
 
+  -- If extra_args are provided, close existing terminal and respawn
+  local has_extra_args = extra_args and extra_args ~= ''
+  if has_extra_args and bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+    -- Close existing terminal windows
+    local win_ids = vim.fn.win_findbuf(bufnr)
+    for _, win_id in ipairs(win_ids) do
+      vim.api.nvim_win_close(win_id, true)
+    end
+    -- Clear the instance
+    claude_code.claude_code.instances[instance_id] = nil
+    bufnr = nil
+  end
+
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
     -- Handle existing instance (toggle visibility)
     handle_existing_instance(bufnr, config)
@@ -469,7 +495,7 @@ function M.toggle(claude_code, config, git)
       claude_code.claude_code.instances[instance_id] = nil
     end
     -- Create new instance
-    create_new_instance(claude_code, config, git, instance_id)
+    create_new_instance(claude_code, config, git, instance_id, extra_args)
   end
 end
 
