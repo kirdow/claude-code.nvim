@@ -391,12 +391,13 @@ local function create_new_instance(claude_code, config, git, instance_id, extra_
     -- Validate relative to git root if configured, otherwise relative to cwd
     local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
     local validated_cmd = validate_command(config.command, check_dir)
-    local cmd = build_command_with_git_root(config, git, validated_cmd)
 
-    -- Append extra args if provided
+    -- Append extra args to base command if provided
     if extra_args and extra_args ~= '' then
-      cmd = cmd .. ' ' .. extra_args
+      validated_cmd = validated_cmd .. ' ' .. extra_args
     end
+
+    local cmd = build_command_with_git_root(config, git, validated_cmd)
 
     -- Run terminal in the buffer
     vim.fn.termopen(cmd)
@@ -423,13 +424,13 @@ local function create_new_instance(claude_code, config, git, instance_id, extra_
     -- Validate relative to git root if configured, otherwise relative to cwd
     local check_dir = (config.git and config.git.use_git_root) and git.get_git_root() or nil
     local validated_cmd = validate_command(config.command, check_dir)
-    local base_cmd = build_command_with_git_root(config, git, validated_cmd)
 
-    -- Append extra args if provided
+    -- Append extra args to base command if provided
     if extra_args and extra_args ~= '' then
-      base_cmd = base_cmd .. ' ' .. extra_args
+      validated_cmd = validated_cmd .. ' ' .. extra_args
     end
 
+    local base_cmd = build_command_with_git_root(config, git, validated_cmd)
     local cmd = 'terminal ' .. base_cmd
 
     vim.cmd(cmd)
